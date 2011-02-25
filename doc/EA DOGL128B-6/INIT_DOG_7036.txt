@@ -1,0 +1,459 @@
+;******************************************************************************
+; Codefragment f¸r die Ansteuerung von Displays der Serie EA DOGM
+; Controller ST7036
+; Dieses Beispiel geht davon aus, daﬂ die Auswahl des Displays ¸ber 
+; Lˆtbr¸cken LB1, LB2 getroffen wird.
+;******************************************************************************
+
+;------------------------------------------------------------------------------
+; Port Definitionen
+;------------------------------------------------------------------------------
+
+DPORT	.EQU	P2	; Displayport fÅr Daten
+RW	.EQU	P3.2	; Display: Read / Write
+RS	.EQU	P3.3	; Display: Register Select
+E1	.EQU	P3.4	; Display: Enable 1
+DRES	.EQU	P3.5	; Display: Reset
+
+LB1	.EQU	P3.7	; Displaytyp LîtbrÅcke 1
+LB2	.EQU	P3.6	; Displaytyp LîtbrÅcke 2
+
+;------------------------------------------------------------------------------
+; Kontroller Konstanten
+;------------------------------------------------------------------------------
+
+CLEARDISP	.EQU	001h
+CURSORHOME	.EQU	002h
+ENTRYMODE	.EQU	004h
+DISPCONTROL	.EQU	00Ch
+FUNCTIONSET	.EQU	030h
+CGRAMADR	.EQU	040h
+DDRAMADR	.EQU	080h
+
+POWERCTRL	.EQU	050h
+CONTRASTSET	.EQU	070h
+
+
+;------------------------------------------------------------------------------
+; System und Display initialisieren
+;------------------------------------------------------------------------------
+
+START:
+	MOV	SP,#STACKSTART-1	; Stackpointer initialisieren
+	MOV	IE,#0	; Alle Interupts Disablen
+
+... Prozessorhardware initialisieren
+
+	CLR	E1	; Die Enables auf 0 setzen
+	CLR	RW	; RW auf 0 setzen
+	CLR	RS	; RS auf 0 setzen
+	MOV	DPORT,#0	; D0-D7 auf 0 setzen
+
+	LCALL	DISP_RESET
+	LCALL	DISP_INIT
+	LCALL	DISP_CLR
+
+...
+
+;------------------------------------------------------------------------------
+;******************************************************************************
+;
+; Unterprogramme zur Displayansteuerung
+; 
+;******************************************************************************
+
+
+;-----------------------------------------------------------------------------
+; Hier sind die verschiedenen Displaytypen feselegt
+;------------------------------------------------------------------------------
+
+INIT1X8:	.BYTE 1,8	; MAXSPALTE, MAXZEILE
+	.BYTE $00,$00,$00	; ZEILADR1, ZEILADR2, ZEILADR3
+	.BYTE $30	; FUNCTION: Function Set f¸r 1-zeilig, Instruction table 0
+
+	.BYTE %00110001	; instruction set table 1
+	.BYTE %00011100	; Bias Set 1/4, 1-zeilig
+	.BYTE %01010001	; Power Control, C5+C4 1..0
+	.BYTE %01101010	; Follower Control, RA/RB 2..0
+	.BYTE %01111000	; Contrast Set, C3..C0
+	.BYTE %00110000	; instruction set table extension mode
+	.BYTE %00001100	; Display On
+	.BYTE $00
+
+;------------	
+INIT2X16:	.BYTE 2,16	; MAXSPALTE, MAXZEILE
+	.BYTE $00,$40,$00	; ZEILADR1, ZEILADR2, ZEILADR3
+	.BYTE $38	; FUNCTION: Function Set f¸r 2-zeilig, Instruction table 0
+
+	.BYTE %00111001	; instruction set table 1
+	.BYTE %00011100	; Bias Set, 1/2-zeilig
+	.BYTE %01010011	; Power Control, C5+C4 1..0
+	.BYTE %01101001	; Follower Control, RA/RB 2..0
+	.BYTE %01110100	; Contrast Set, C3..C0
+	.BYTE %00111000	; instruction set table extension mode
+	.BYTE %00001100	; Display On
+	.BYTE $00
+
+;------------	
+INIT3X16:
+	.BYTE 3,16	; MAXSPALTE, MAXZEILE
+	.BYTE $00,$10,$20	; ZEILADR1, ZEILADR2, ZEILADR3
+	.BYTE $38	; FUNCTION: Function Set f¸r 2-zeilig, Instruction table 0
+
+	.BYTE %00111001	; instruction set table 1
+	.BYTE %00011101	; Bias Set, 3-zeilig
+	.BYTE %01010000	; Power Control, C5+C4 1..0
+	.BYTE %01101100	; Follower Control, RA/RB 2..0
+	.BYTE %01111100	; Contrast Set, C3..C0
+	.BYTE %00111000	; instruction set table extension mode
+	.BYTE %00001100	; Display On
+	.BYTE $00
+
+;------------------------------------------------------------------------------
+; F¸hrt am Display einen Reset
+;
+; ‹bergabe: -
+; R¸ckgabe: -
+;
+; Ver‰nderte Register: A
+;------------------------------------------------------------------------------
+
+DISP_RESET:
+	CLR	E1	; Die Enables auf 0 setzen
+	CLR	RW	; RW auf 0 setzen
+	CLR	RS	; RS auf 0 setzen
+	MOV	DPORT,#0	; D0-D7 auf 0 setzen
+
+	CLR	DRES	; Reset f¸r Display
+	MOV	A,#10
+	LCALL	WARTEMS
+	SETB	DRES
+	MOV	A,#50
+	LCALL	WARTEMS
+
+	RET
+
+
+;------------------------------------------------------------------------------
+; Liest Lˆtbr¸cken ein und initialisiert das Display entsprechend
+;------------------------------------------------------------------------------
+
+DISP_INIT:
+	MOV	DPTR,#INIT2X16
+DSPINICMP1:	JB	LB1,DSPINICMP2
+	MOV	DPTR,#INIT1X8
+DSPINICMP2:	JB	LB2,DISPINIT2
+	MOV	DPTR,#INIT3X16
+
+DISPINIT2:	CLR	A
+	MOVC	A,@A+DPTR	; Spaltenanzahl 
+	MOV	MAXZEILE,A	; Zeilen + MUX einlesen
+
+	INC	DPTR
+	CLR	A
+	MOVC	A,@A+DPTR
+	MOV	MAXSPALTE,A	; einlesen
+
+	INC	DPTR
+	CLR	A
+	MOVC	A,@A+DPTR
+	MOV	ZEILADR1,A	; Zeilenadresse 1
+
+	INC	DPTR
+	CLR	A
+	MOVC	A,@A+DPTR
+	MOV	ZEILADR2,A	; Zeilenadresse 2
+
+	INC	DPTR
+	CLR	A
+	MOVC	A,@A+DPTR
+	MOV	ZEILADR3,A	; Zeilenadresse 3
+
+	INC	DPTR
+	CLR	A
+	MOVC	A,@A+DPTR
+	MOV	FUNCTION,A	; Zeilenadresse 3
+
+DISPINITLO:
+	INC	DPTR
+	CLR	A
+	MOVC	A,@A+DPTR
+	JZ	DISPINITEND
+	LCALL	BEF_OUT
+	SJMP	DISPINITLO	
+
+DISPINITEND:	RET
+
+
+;------------------------------------------------------------------------------
+; Lˆscht das Display 
+;
+; ‹bergabe: -
+; R¸ckgabe: -
+;
+; Ver‰nderte Register: A,B
+;------------------------------------------------------------------------------
+
+DISP_CLR:
+	MOV	A,#DISPCONTROL	; Cursor ausschalten
+	LCALL	BEF_OUT
+
+	MOV	A,#CLEARDISP	; Befehl Clear Display
+	LCALL	BEF_OUT	; ausf¸hren
+
+	MOV	A,#3
+	LCALL	WARTEMS
+
+	RET
+
+
+;------------------------------------------------------------------------------
+; Schaltet den Cursor AUS
+;
+; ‹bergabe: -
+; R¸ckgabe: -
+;
+; Ver‰nderte Register: A
+;------------------------------------------------------------------------------
+
+CURSOROFF:
+	MOV	A,#DISPCONTROL
+	LCALL	BEF_OUT
+
+	RET
+
+
+;------------------------------------------------------------------------------
+; Schaltet den Cursor EIN
+;
+; ‹bergabe: -
+; R¸ckgabe: -
+;
+; Ver‰nderte Register: A
+;------------------------------------------------------------------------------
+
+CURSORON:
+	JB	F_SCRNXT,CURSONEND
+
+	MOV	A,#DISPCONTROL
+	MOV	C,F_DCURB
+	MOV	A.0,C
+	MOV	C,F_DCURU
+	MOV	A.1,C
+	LCALL	BEF_OUT
+
+CURSONEND:	RET
+
+
+;------------------------------------------------------------------------------
+; Liest ein Byte vom Display ein
+;
+; ‹bergabe: -
+; R¸ckgabe: A = Eingelesenes Byte 
+;
+; Ver‰nderte Register: -
+;------------------------------------------------------------------------------
+
+DAT_IN:
+	JB	F_NOBUSY,DATIN
+
+	CLR	RS	; Befehlsmodus f¸r Display
+	LCALL	BYTE_IN	; Busy abfragen
+	JB	A.7,$-3	; noch nicht Bereit BF=1? dann nochmal abfragen
+
+DATIN:	SETB	RS	; Datenmodus f¸r Display
+	LCALL	BYTE_IN	; Daten einlesen
+
+	RET
+
+
+;------------------------------------------------------------------------------
+; Gibt ein Byte zum Display aus
+;
+; ‹bergabe: A = Auszugebendes Byte
+; R¸ckgabe: -
+;
+; Ver‰nderte Register: A,B
+;------------------------------------------------------------------------------
+
+DAT_OUT:
+	JB	F_NOBUSY,DATOUT
+
+	MOV	B,A	; Byte in B merken
+	CLR	RS	; Befehlsmodus f¸r Display
+	LCALL	BYTE_IN	; Busy abfragen
+	JB	A.7,$-3	; noch nicht Bereit BF=1? dann nochmal abfragen
+	MOV	A,B	; Byte wieder holen
+
+DATOUT:	SETB	RS	; Datenmodus f¸r Display
+	LCALL	BYTE_OUT
+
+	RET
+
+
+;------------------------------------------------------------------------------
+; Gibt einen Befehl zum Display aus
+;
+; ‹bergabe: A = Auszugebender Befehl
+; R¸ckgabe: -
+;
+; Ver‰nderte Register: A,B
+;------------------------------------------------------------------------------
+
+BEF_OUT:
+	CLR	RS	; Befehlsmodus f¸r Display
+
+	JB	F_NOBUSY,BEFOUT
+
+	MOV	B,A	; Byte in B merken
+	LCALL	BYTE_IN	; Busy abfragen
+	JB	A.7,$-3	; noch nicht Bereit BF=1? dann nochmal abfragen
+	MOV	A,B	; Byte wieder holen
+
+BEFOUT:	LCALL	BYTE_OUT
+
+	RET
+
+
+;------------------------------------------------------------------------------
+; Gibt ein Byte zum Display aus (RS muss gesetzt sein!)
+;
+; ‹bergabe: A = Auszugebendes Byte
+; R¸ckgabe: -
+;
+; Ver‰nderte Register: A
+;------------------------------------------------------------------------------
+
+BYTE_OUT:
+	MOV	DPORT,A	; Byte an Port legen
+	CLR	RW	; ins Display Schreiben
+	SETB	E1	; Enable Puls
+	CLR	E1	; erzeugen
+
+	RET
+
+;------------------------------------------------------------------------------
+; Liest ein Byte vom Display ein (RS muss gesetzt sein!)
+;
+; ‹bergabe: -
+; R¸ckgabe: A = Eingelesenes BYte
+;
+; Ver‰nderte Register: -
+;------------------------------------------------------------------------------
+
+BYTE_IN:
+	MOV	DPORT,#255	; Datenleitungen 1 setzen
+	SETB	RW	; vom Display Lesen
+	SETB	E1	; Enable auf 1 setzen
+	MOV	A,DPORT	; Display Port lesen
+	CLR	E1	; Enable wieder lˆschen
+
+	RET
+
+;-----------------------------------------------------------------------------
+; Hier sind die 8 Selbstdefinierbaren Zeichen nach Power-On festgelegt
+;-----------------------------------------------------------------------------
+
+SDZCH0:
+	.BYTE 00110b
+	.BYTE 01001b
+	.BYTE 10000b
+	.BYTE 11110b
+	.BYTE 10000b
+	.BYTE 01001b
+	.BYTE 00110b
+	.BYTE 00000b
+
+SDZCH1:
+	.BYTE 00100b
+	.BYTE 00100b
+	.BYTE 11111b
+	.BYTE 00100b
+	.BYTE 00100b
+	.BYTE 00000b
+	.BYTE 11111b
+	.BYTE 00000b
+
+SDZCH2:
+	.BYTE 11100b
+	.BYTE 00100b
+	.BYTE 11100b
+	.BYTE 10000b
+	.BYTE 11100b
+	.BYTE 00000b
+	.BYTE 00000b
+	.BYTE 00000b
+
+SDZCH3:
+	.BYTE 11100b
+	.BYTE 00100b
+	.BYTE 11100b
+	.BYTE 00100b
+	.BYTE 11100b
+	.BYTE 00000b
+	.BYTE 00000b
+	.BYTE 00000b
+
+SDZCH4:
+	.BYTE 01100b
+	.BYTE 10010b
+	.BYTE 10010b
+	.BYTE 10110b
+	.BYTE 10001b
+	.BYTE 10001b
+	.BYTE 10110b
+	.BYTE 10000b
+
+SDZCH5:
+	.BYTE 00000b
+	.BYTE 10000b
+	.BYTE 01000b
+	.BYTE 00100b
+	.BYTE 00010b
+	.BYTE 00001b
+	.BYTE 00000b
+	.BYTE 00000b
+
+SDZCH6:
+	.BYTE 00000b
+	.BYTE 00000b
+	.BYTE 01000b
+	.BYTE 10101b
+	.BYTE 00010b
+	.BYTE 00000b
+	.BYTE 00000b
+	.BYTE 00000b
+
+SDZCH7:
+	.BYTE 00000b
+	.BYTE 01010b
+	.BYTE 01010b
+	.BYTE 01010b
+	.BYTE 01010b
+	.BYTE 01101b
+	.BYTE 11000b
+	.BYTE 00000b
+
+
+;------------------------------------------------------------------------------
+; Zeichentabelle Umsetzung nach DOS f¸r ST7036 Kontroller
+
+ZCHTAB1:
+	.BYTE	000,001,002,003,004,005,006,007,008,009,010,011,012,013,014,015
+	.BYTE	016,017,018,019,020,021,022,023,024,025,026,027,028,029,030,031
+	.BYTE	032,033,034,035,036,037,038,039,040,041,042,043,044,045,046,047
+	.BYTE	048,049,050,051,052,053,054,055,056,057,058,059,060,061,062,063
+	.BYTE	064,065,066,067,068,069,070,071,072,073,074,075,076,077,078,079
+	.BYTE	080,081,082,083,084,085,086,087,088,089,090,091,005,093,094,095
+	.BYTE	096,097,098,099,100,101,102,103,104,105,106,107,108,109,110,111
+	.BYTE	112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127
+
+	.BYTE	000,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143
+	.BYTE	144,145,146,147,148,149,150,151,152,153,154,155,156,157,004,159
+	.BYTE	160,161,162,163,164,165,166,167,168,169,170,245,246,173,174,175
+	.BYTE	176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191
+	.BYTE	192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207
+	.BYTE	208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223
+	.BYTE	031,004,226,227,026,229,007,231,232,233,234,235,236,237,238,239
+	.BYTE	240,001,242,243,244,245,246,247,223,249,250,254,003,002,254,255
+

@@ -1,0 +1,116 @@
+;------------------------------------------------------------------------------
+; Konstanten fuer Display Kommandos ST7665
+;------------------------------------------------------------------------------
+
+DISPOFF	.EQU	10101110b	; (1) Wert fuer Display OFF
+DISPON	.EQU	10101111b	; (1) Wert fuer Display ON
+DISPSTART	.EQU	01000000b	; (2) Basiswert	fuer Display Start Line
+PAGEADR	.EQU	10110000b	; (3) Basiswert fuer Page Address Set
+COLADRL	.EQU	00000000b	; (4) Basiswert fuer LSB Column Address Set
+COLADRH	.EQU	00010000b	; (4) Basiswert fÅr MSB Column Address Set
+ADCSELECT	.EQU	10100000b	; (8)
+REVERSEDISP	.EQU	10100110b	; (9)
+DISPALLON	.EQU	10100100b	; (10)
+LCDBIAS	.EQU	10100010b	; (11)
+SETMODIFYRD	.EQU	11100000b	; (12)
+RESMODIFYRD	.EQU	11101110b	; (13)
+RESET	.EQU	11100010b	; (14)
+COMMODE	.EQU	11001000b	; (15)
+POWERCTRL	.EQU	00101000b	; (16)
+VOLTAGEREG	.EQU	00100000b	; (17)
+VOLUMESET	.EQU	10000001b	; (18)
+STATICINDI	.EQU	10101100b	; (19)
+
+#define COLOFF
+#ifdef COLOFF
+COLADROFF	.EQU	4	; Offset der Spaltenadresse fÅr Displayinhalt
+DSPRAMOFF	.EQU	0	; Spaltenadresse fÅr Display-RAM zur freien Benutzung
+#else
+COLADROFF	.EQU	0	; Offset der Spaltenadresse fÅr Displayinhalt
+DSPRAMOFF	.EQU	128	; Spaltenadresse fÅr Display-RAM zur freien Benutzung
+#endif
+
+;------------------------------------------------------------------------------
+; Makros fuer Displayausgaben
+;------------------------------------------------------------------------------
+
+#define	DISPBEF		CLR	RS	; Befehlsmodus fuer Display
+#define	DISPDAT		SETB	RS	; Datenmodus fuer Display
+#define	DISPOUTA	MOVX	@R0,A
+#define	DISPINA		MOVX	A,@R0
+#define	DISPBEFOUTA	LCALL DSPBEFOUT	; Befehl zum Display ausgeben
+#define	DISPDATOUTA	LCALL DSPDATOUT	; Daten zum Display ausgeben
+#define	DISPDATINA	LCALL DSPDATIN	; Daten vom Display lesen
+#define COLADR		LCALL	SETCOLOFF
+
+
+;------------------------------------------------------------------------------
+; Das Display initialisieren
+;------------------------------------------------------------------------------
+
+DISPINIT:
+	CLR	DRES	; Display Reset
+	NOP
+	SETB	DRES
+
+	MOV	A,#50
+	LCALL	WARTEMS
+
+	MOV	A,#DISPSTART
+	DISPBEFOUTA
+
+	MOV	A,#DISPON
+	DISPBEFOUTA
+
+	MOV	A,#DISPALLON
+	DISPBEFOUTA
+
+	MOV	A,#COMMODE
+	DISPBEFOUTA
+
+	MOV	A,#ADCSELECT+1
+	DISPBEFOUTA
+
+	MOV	A,#VOLUMESET	; Kontrast einstellen
+	DISPBEFOUTA
+	MOV	A,#33	; 0..63
+	DISPBEFOUTA
+
+	MOV	A,#LCDBIAS+1
+	DISPBEFOUTA
+
+	MOV	A,#POWERCTRL+111b
+	DISPBEFOUTA
+
+	MOV	A,#VOLTAGEREG+100b
+	DISPBEFOUTA
+
+	RET
+
+
+;------------------------------------------------------------------------------
+; Befehl im A zum Display ausgeben
+;------------------------------------------------------------------------------
+
+DSPBEFOUT:	DISPBEF
+	DISPOUTA
+	RET
+
+;------------------------------------------------------------------------------
+; Daten im A zum Display ausgeben
+;------------------------------------------------------------------------------
+
+DSPDATOUT:	DISPDAT
+	DISPOUTA
+	RET
+
+;------------------------------------------------------------------------------
+; Ein Byte vom Display in den A lesen
+;------------------------------------------------------------------------------
+
+DSPDATIN:
+	DISPDAT
+	DISPINA	; ersmal ein Dummy-Read
+	DISPINA	; Daten lesen
+	RET
+
