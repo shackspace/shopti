@@ -42,7 +42,7 @@
 ##### website for detailed instructions
 
 
-MCU=atmega168
+MCU=atmega168p
 PROGRAMMER_MCU=m168
 PROJECTNAME=shopti
 PRJSRC=main.c
@@ -51,6 +51,9 @@ LIBS=
 OPTLEVEL=s
 AVRDUDE_PROGRAMMERID=stk500v1
 AVRDUDE_PORT=/dev/ttyUSB0
+AVRDUDE_BAUD=115200
+#force signature for arduino bootloader
+AVRDUDE_OPTS=-F
 
 
 ####################################################
@@ -161,6 +164,7 @@ hex: $(HEXTRG)
 writeflash: hex
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)   \
 	 -p $(PROGRAMMER_MCU) -P $(AVRDUDE_PORT) -e        \
+	 -b $(AVRDUDE_BAUD) $(AVRDUDE_OPTS) \
 	 -U flash:w:$(HEXROMTRG)
 
 install: writeflash
